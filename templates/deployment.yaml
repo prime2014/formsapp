@@ -1,0 +1,111 @@
+{{- range .Values.deployment }}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{.name | quote }}
+  labels:
+    {{ .labels | quote | nindent 4 }}
+spec:
+  {{- if not $.Values.autoscaling.enabled }}
+  replicas: {{ $.Values.replicaCount }}
+  {{- end }}
+  selector:
+    matchLabels:
+      {{ .podLabel | nindent 6 }}
+  template:
+    metadata:
+      {{- with $.Values.podAnnotations }}
+      annotations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      labels:
+        {{ .podLabel | nindent 8 }}
+    spec:
+      {{- with $.Values.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      serviceAccountName: {{ include "formsapp.serviceAccountName" . }}
+      securityContext:
+        {{- toYaml $.Values.podSecurityContext | nindent 8 }}
+      containers:
+        - name: {{ .containerName }}
+          securityContext:
+            {{- toYaml $.Values.securityContext | nindent 12 }}
+          image: "{{ $.Values.image.repository }}:{{ $.Values.image.tag | default $.Chart.AppVersion }}"
+          imagePullPolicy: {{ .pullPolicy }}
+          {{- if eq .name "django-deployment" }}
+          env:
+            - name: POSTGRES_HOST
+              valueFrom:
+                secretKeyRef:
+                  name: django-secrets
+                  key: postgres-host
+            
+            - name: POSTGRES_USER
+              valueFrom:
+                secretKeyRef:
+                  name: django-secrets
+                  key: postgres-user
+            
+            - name: POSTGRES_PASS
+              valueFrom:
+                secretKeyRef:
+                  name: django-secrets
+                  key: postgres-pass
+            
+            - name: POSTGRES_PORT
+              valueFrom:
+                secretKeyRef:
+                  name: django-secrets
+                  key: postgres-port
+            
+            - name: POSTGRES_DB
+              valueFrom:
+                secretKeyRef:
+                  name: django-secrets
+                  key: postgres-db
+            
+            - name: POSTGRES_URL
+              valueFrom:
+                secretKeyRef:
+                  name: django-secrets
+                  key: postgres-url
+          {{- else }}
+            - name: REACT_APP_API_URL
+              valueFrom:
+                secretKeyRef:
+                  name: django-secrets
+                  key: react-app-api-url
+          {{- end }}
+
+          ports:
+            - name: http
+              containerPort: {{ .containerPort }}
+              protocol: TCP
+          livenessProbe:
+            httpGet:
+              path: /
+              port: http
+          readinessProbe:
+            httpGet:
+              path: /
+              port: http
+          resources:
+            {{- toYaml $.Values.resources | nindent 12 }}
+      {{- with $.Values.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with $.Values.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with $.Values.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+
+
+{{- end }}
+
